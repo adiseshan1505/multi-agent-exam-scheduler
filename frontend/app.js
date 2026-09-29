@@ -27,8 +27,10 @@ async function api(path, body) {
   const res = await fetch(path, body === undefined ? {} : {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: SESSION, ...body }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || res.statusText);
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  if (!res.ok) throw new Error(data?.detail || res.statusText || "Server error");
+  if (!data) throw new Error("Invalid response from server");
   return data;
 }
 
@@ -60,6 +62,7 @@ async function init() {
   if (state.scenarios.some((s) => s.name === q.get("scenario"))) sel.value = q.get("scenario");
   onScenarioChange();
 
+  initBuilder();
   $("#loadBtn").onclick = load;
   $("#stepBtn").onclick = () => guard(async () => applySnapshot(await api("/api/sim/step", { ticks: 1 })));
   $("#runBtn").onclick = () => guard(async () => { stopPlay(); applySnapshot(await api("/api/sim/run", { ticks: 100 })); });
@@ -147,6 +150,7 @@ function render() {
   renderDecisions();
   renderMessages();
   renderEventForm();
+  renderBuilderForm();
   const up = state.snap.upcoming_events;
   $("#upcoming").textContent = up.length ? `Scheduled disruptions: ${up.map((e) => `t${e.tick} ${e.description}`).join("; ")}.` : "";
 }
@@ -304,6 +308,103 @@ function renderEventForm() {
   if (!$("#evEnd").dataset.touched) { $("#evEnd").value = String(snap.period.day_end); $("#evEnd").dataset.touched = "1"; }
 }
 
+// ------------------------------------------------------------------ builder panel
+function initBuilder() {
+  document.querySelectorAll("#builderTabs button").forEach((b) => b.onclick = () => {
+    document.querySelectorAll("#builderTabs button").forEach((x) => x.classList.toggle("on", x === b));
+    document.querySelectorAll(".builder-form").forEach((f) => f.classList.toggle("hidden", f.id !== `bf-${b.dataset.builder}`));
+    $("#builderMsg").textContent = "";
+  });
+  $("#ar_btn").onclick = addRoom;
+  $("#af_btn").onclick = addFaculty;
+  $("#ae_btn").onclick = addExam;
+}
+
+function builderMsg(text, ok) {
+  const el = $("#builderMsg");
+  el.textContent = (ok ? "✓ " : "⚠ ") + text;
+  el.className = "small " + (ok ? "success" : "error");
+}
+
+async function addRoom() {
+  const id = $("#ar_id").value.trim();
+  if (!id) { builderMsg("Room ID is required", false); return; }
+  try {
+    const snap = await api("/api/sim/room", {
+      id, name: $("#ar_name").value, capacity: Number($("#ar_cap").value), building: $("#ar_bldg").value,
+    });
+    applySnapshot(snap);
+    builderMsg(`Room ${id} added — now available for scheduling`, true);
+    $("#ar_id").value = ""; $("#ar_name").value = "";
+  } catch (e) { builderMsg(e.message, false); }
+}
+
+async function addFaculty() {
+  const id = $("#af_id").value.trim();
+  const name = $("#af_name").value.trim();
+  if (!id) { builderMsg("Faculty ID is required", false); return; }
+  if (!name) { builderMsg("Faculty name is required", false); return; }
+  try {
+    const snap = await api("/api/sim/faculty", {
+      id, name, department: $("#af_dept").value,
+    });
+    applySnapshot(snap);
+    builderMsg(`${name} (${id}) added as invigilator`, true);
+    $("#af_id").value = ""; $("#af_name").value = "";
+  } catch (e) { builderMsg(e.message, false); }
+}
+
+async function addExam() {
+  const course = $("#ae_course").value.trim();
+  if (!course) { builderMsg("Course code is required", false); return; }
+  const groupsRaw = $("#ae_groups").value.trim();
+  const groups = groupsRaw ? groupsRaw.split(",").map((g) => g.trim()).filter(Boolean) : ["GEN"];
+  // Gather checked days
+  const checkedDays = [...document.querySelectorAll("#ae_days input:checked")].map((cb) => Number(cb.value));
+  const windows = checkedDays.length ? [checkedDays, list_all_days()] : [];
+  const prefDay = $("#ae_pday").value;
+  const prefHour = $("#ae_phour").value;
+  try {
+    const snap = await api("/api/sim/exam", {
+      course,
+      title: $("#ae_title").value || course,
+      students: Number($("#ae_students").value),
+      groups,
+      duration: Number($("#ae_duration").value),
+      priority: Number($("#ae_prio").value),
+      windows,
+      preferred_day: prefDay !== "" ? Number(prefDay) : null,
+      preferred_hour: prefHour !== "" ? Number(prefHour) : null,
+      preferred_room: $("#ae_room").value || null,
+    });
+    applySnapshot(snap);
+    builderMsg(`Exam ${course} added — step the simulation to schedule it`, true);
+    $("#ae_course").value = ""; $("#ae_title").value = "";
+  } catch (e) { builderMsg(e.message, false); }
+}
+
+function list_all_days() {
+  if (!state.snap) return [];
+  return state.snap.period.days.map((_, i) => i);
+}
+
+function renderBuilderForm() {
+  const snap = state.snap;
+  if (!snap) return;
+  const { days, day_start, day_end } = snap.period;
+  // Day checkboxes
+  $("#ae_days").innerHTML = days.map((d, i) => `<label><input type="checkbox" value="${i}"><span>${esc(d)}</span></label>`).join("");
+  // Preferred day dropdown
+  const keepVal = (sel, html) => { const v = $(sel).value; $(sel).innerHTML = html; if ([...$(sel).options].some((o) => o.value === v)) $(sel).value = v; };
+  keepVal("#ae_pday", `<option value="">None</option>` + days.map((d, i) => `<option value="${i}">${esc(d)}</option>`).join(""));
+  // Preferred hour dropdown
+  const hrs = [];
+  for (let h = day_start; h < day_end; h++) hrs.push(h);
+  keepVal("#ae_phour", `<option value="">None</option>` + hrs.map((h) => `<option value="${h}">${h}:00</option>`).join(""));
+  // Preferred room dropdown
+  keepVal("#ae_room", `<option value="">Any room</option>` + snap.rooms.map((r) => `<option value="${esc(r.id)}">${esc(r.id)} (cap ${r.capacity})</option>`).join(""));
+}
+
 // ------------------------------------------------------------------ misc
 function initTheme() {
   let t = null;
@@ -331,3 +432,4 @@ document.addEventListener("mousemove", (e) => {
 });
 
 init().catch((e) => { document.body.insertAdjacentHTML("afterbegin", `<p style="color:red;padding:12px">Failed to start: ${esc(e.message)}. Is the server running?</p>`); });
+

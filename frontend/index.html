@@ -62,6 +62,79 @@
       </section>
 
       <section>
+        <h2>➕ Add Resources & Exams</h2>
+        <p class="muted small">Add new rooms, invigilators, or exams to the <b>running</b> simulation — no code changes needed. The multi-agent system handles everything.</p>
+
+        <div class="seg builder-tabs" id="builderTabs">
+          <button data-builder="room" class="on">Room</button>
+          <button data-builder="faculty">Invigilator</button>
+          <button data-builder="exam">Exam</button>
+        </div>
+
+        <!-- Add Room -->
+        <div class="builder-form" id="bf-room">
+          <label>Room ID <input type="text" id="ar_id" placeholder="e.g. LH-301" /></label>
+          <label>Display Name <input type="text" id="ar_name" placeholder="e.g. Lecture Hall 301" /></label>
+          <div class="row2">
+            <label>Capacity <input type="number" id="ar_cap" min="10" max="2000" value="80" /></label>
+            <label>Building
+              <select id="ar_bldg">
+                <option>Main</option><option>North</option><option>South</option><option>East</option><option>West</option>
+              </select>
+            </label>
+          </div>
+          <button id="ar_btn" class="primary wide">Add Room</button>
+        </div>
+
+        <!-- Add Faculty -->
+        <div class="builder-form hidden" id="bf-faculty">
+          <label>Faculty ID <input type="text" id="af_id" placeholder="e.g. F15" /></label>
+          <label>Name <input type="text" id="af_name" placeholder="e.g. Dr. Sharma" /></label>
+          <label>Department
+            <select id="af_dept">
+              <option value="CS">CS</option><option value="EE">EE</option><option value="ME">ME</option>
+              <option value="MA">MA</option><option value="PH">PH</option><option value="CH">CH</option>
+              <option value="HS">HS</option>
+            </select>
+          </label>
+          <button id="af_btn" class="primary wide">Add Invigilator</button>
+        </div>
+
+        <!-- Add Exam -->
+        <div class="builder-form hidden" id="bf-exam">
+          <label>Course Code <input type="text" id="ae_course" placeholder="e.g. ME401" /></label>
+          <label>Title <input type="text" id="ae_title" placeholder="e.g. Fluid Mechanics" /></label>
+          <div class="row2">
+            <label>Students <input type="number" id="ae_students" min="1" max="2000" value="60" /></label>
+            <label>Duration (hrs) <input type="number" id="ae_duration" min="1" max="8" value="2" /></label>
+          </div>
+          <div class="row2">
+            <label>Priority
+              <select id="ae_prio">
+                <option value="1">1 (Low)</option><option value="2" selected>2 (Normal)</option>
+                <option value="3">3 (High)</option><option value="4">4 (Critical)</option>
+              </select>
+            </label>
+            <label>Preferred Room
+              <select id="ae_room"><option value="">Any room</option></select>
+            </label>
+          </div>
+          <label>Student Groups <input type="text" id="ae_groups" placeholder="e.g. CS-Y2, EE-Y2" value="" /></label>
+          <div class="ae-days-section">
+            <span class="muted small">Allowed days (leave unchecked = all days)</span>
+            <div id="ae_days" class="ae-days"></div>
+          </div>
+          <div class="row2">
+            <label>Pref. Day <select id="ae_pday"><option value="">None</option></select></label>
+            <label>Pref. Hour <select id="ae_phour"><option value="">None</option></select></label>
+          </div>
+          <button id="ae_btn" class="primary wide">Add Exam</button>
+        </div>
+
+        <p id="builderMsg" class="small"></p>
+      </section>
+
+      <section>
         <h2>Legend</h2>
         <div class="legend">
           <span><i class="sw p1"></i>priority 1</span>
