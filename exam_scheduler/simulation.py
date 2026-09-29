@@ -74,6 +74,44 @@ class Simulation:
         for agent in [self.coordinator, *self.rooms.values(), *self.faculty.values(), *self.exams.values()]:
             self.bus.register(agent)
 
+    def inject_exam(self, spec: ExamSpec) -> None:
+        """Add a new exam to a running simulation (used by the UI / API)."""
+        if spec.course in self.exams:
+            raise ValueError(f"exam '{spec.course}' already exists")
+        # compute clashing exams (shares student groups)
+        all_specs = [a.spec for a in self.exams.values()]
+        clashing = {s.course for s in all_specs if s.groups & spec.groups}
+        # also update existing agents whose groups overlap with the new exam
+        for course in clashing:
+            self.exams[course].clashing.add(spec.course)
+        agent = ExamRequestAgent(spec, clashing, self.coordinator.id)
+        self.exams[spec.course] = agent
+        self.bus.register(agent)
+        # Update coordinator's room capacities in case rooms were added
+        # (not needed here since rooms don't change, but keep spec count correct)
+
+    def inject_room(self, room: Room, flakiness: float = 0.0) -> None:
+        """Add a new room to a running simulation."""
+        if room.id in self.rooms:
+            raise ValueError(f"room '{room.id}' already exists")
+        import random as _rand
+        agent = RoomAgent(room, rng=_rand.Random(), flakiness=flakiness)
+        self.rooms[room.id] = agent
+        self.bus.register(agent)
+        self.coordinator.rooms[room.id] = room.capacity
+        self.coordinator.room_belief[room.id] = []
+
+    def inject_faculty(self, fac: Faculty, flakiness: float = 0.0) -> None:
+        """Add a new invigilator to a running simulation."""
+        if fac.id in self.faculty:
+            raise ValueError(f"faculty '{fac.id}' already exists")
+        import random as _rand
+        agent = InvigilatorAgent(fac, rng=_rand.Random(), flakiness=flakiness)
+        self.faculty[fac.id] = agent
+        self.bus.register(agent)
+        self.coordinator.faculty.append(fac.id)
+        self.coordinator.fac_belief[fac.id] = []
+
     # ------------------------------------------------------------------
     def inject_event(self, kind: str, resource: str, iv: Interval, reason: str) -> None:
         """Queue a disruption to fire on the next tick (used by the UI / API)."""
