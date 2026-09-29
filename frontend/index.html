@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Exam Scheduling Agents</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Multi-Agent Exam Scheduler</h1>
+      <p class="tagline">Exam Request, Resource and Coordinator agents negotiate a conflict-free timetable and replan when a room or invigilator suddenly becomes unavailable.</p>
+    </div>
+    <button id="themeBtn" title="Toggle light / dark theme">◐ Theme</button>
+  </header>
+
+  <div class="layout">
+    <!-- ================= controls ================= -->
+    <aside class="panel controls">
+      <section>
+        <h2>Scenario</h2>
+        <select id="scenario"></select>
+        <p id="scenarioDesc" class="muted small"></p>
+        <div id="params" class="params hidden">
+          <label>Exams <input type="number" id="p_num_exams" min="1" max="150" /></label>
+          <label>Rooms <input type="number" id="p_num_rooms" min="1" max="40" /></label>
+          <label>Invigilators <input type="number" id="p_num_faculty" min="1" max="40" /></label>
+          <label>Days <input type="number" id="p_num_days" min="1" max="12" /></label>
+          <label>Seed <input type="number" id="p_seed" /></label>
+          <label>Flakiness <input type="number" id="p_flakiness" min="0" max="0.5" step="0.01" /></label>
+        </div>
+        <button id="loadBtn" class="primary wide">Load / reset scenario</button>
+      </section>
+
+      <section>
+        <h2>Simulation</h2>
+        <div class="btnrow">
+          <button id="stepBtn">Step ▸</button>
+          <button id="playBtn">Auto ▶</button>
+          <button id="runBtn">Run to end ⏭</button>
+        </div>
+        <p class="muted small">Each tick: events fire → exam agents act → coordinator plans. <span id="upcoming"></span></p>
+      </section>
+
+      <section>
+        <h2>Inject disruption</h2>
+        <p class="muted small">Makes a Resource Agent broadcast <code>UNAVAILABLE_BROADCAST</code> unprompted.</p>
+        <div class="seg" id="evKind">
+          <button data-kind="room" class="on">Room</button>
+          <button data-kind="faculty">Invigilator</button>
+        </div>
+        <select id="evResource"></select>
+        <div class="row3">
+          <select id="evDay"></select>
+          <select id="evStart"></select>
+          <select id="evEnd"></select>
+        </div>
+        <input id="evReason" type="text" value="AC maintenance" />
+        <button id="evBtn" class="danger wide">Broadcast unavailability</button>
+        <p id="evMsg" class="small"></p>
+      </section>
+
+      <section>
+        <h2>Legend</h2>
+        <div class="legend">
+          <span><i class="sw p1"></i>priority 1</span>
+          <span><i class="sw p2"></i>priority 2</span>
+          <span><i class="sw p3"></i>priority 3+</span>
+          <span><i class="sw blocked"></i>unavailable</span>
+          <span><i class="sw moved"></i>just (re)placed</span>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ================= main ================= -->
+    <main>
+      <div id="stats" class="stats"></div>
+
+      <nav class="tabs" id="tabs">
+        <button data-tab="timetable" class="on">Timetable</button>
+        <button data-tab="agents">Agents</button>
+        <button data-tab="trace">Search trace</button>
+        <button data-tab="peas">PEAS &amp; environment</button>
+      </nav>
+
+      <section class="panel tab" id="tab-timetable">
+        <div class="tt-head">
+          <div class="seg" id="ttView">
+            <button data-view="room" class="on">By room</button>
+            <button data-view="faculty">By invigilator</button>
+          </div>
+          <span id="validity" class="badge"></span>
+        </div>
+        <div id="timetable" class="timetable"></div>
+        <div id="unplaced"></div>
+      </section>
+
+      <section class="panel tab hidden" id="tab-agents">
+        <div class="agents-grid">
+          <div>
+            <h3>Coordinator</h3>
+            <div id="coordCard"></div>
+            <h3>Resource agents: rooms</h3>
+            <div id="roomCards" class="cards"></div>
+            <h3>Resource agents: invigilators</h3>
+            <div id="facCards" class="cards"></div>
+          </div>
+          <div>
+            <h3>Exam request agents</h3>
+            <div id="examCards" class="cards"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel tab hidden" id="tab-trace">
+        <p class="muted small">Latest CSP planning round: variables = pending exams, values = (room, time). MRV picks the most-constrained exam; forward checking prunes neighbours; a wipe-out triggers a backtrack.</p>
+        <ol id="trace" class="trace"></ol>
+      </section>
+
+      <section class="panel tab hidden" id="tab-peas">
+        <div id="peas"></div>
+        <h3>Environment classification</h3>
+        <table class="kv">
+          <tr><th>Observable</th><td><b>Partially.</b> The Coordinator only knows a resource's state by querying it or hearing a broadcast. Its beliefs can be stale, so a booking can still be refused.</td></tr>
+          <tr><th>Deterministic</th><td><b>Stochastic.</b> Resources may refuse bookings unexpectedly (flakiness), and sickness or maintenance arrive at random.</td></tr>
+          <tr><th>Episodic</th><td><b>Sequential.</b> Every booking constrains all later ones.</td></tr>
+          <tr><th>Static</th><td><b>Dynamic.</b> Availability changes while the Coordinator is still scheduling.</td></tr>
+          <tr><th>Discrete</th><td><b>Discrete.</b> Hour-granular slots and a finite set of rooms and invigilators.</td></tr>
+          <tr><th>Agents</th><td><b>Multi-agent.</b> Cooperative overall. Exam agents compete for slots and priority breaks ties.</td></tr>
+        </table>
+        <h3>Algorithm</h3>
+        <p class="small">A CSP solved with backtracking search. Heuristics: MRV (most-constrained exam first), degree and priority as tie-breakers, preference-first and best-fit-room value ordering, and forward checking. Committed exams stay fixed, so a replan only searches the affected exams. If the search fails, a priority-ordered fallback places what it can and the Coordinator negotiates with the rest.</p>
+      </section>
+    </main>
+
+    <!-- ================= feeds ================= -->
+    <aside class="panel feeds">
+      <h2>Coordinator decisions</h2>
+      <ol id="decisions" class="feed"></ol>
+      <h2>Message bus <span id="msgCount" class="muted small"></span></h2>
+      <select id="msgFilter">
+        <option value="">All message types</option>
+        <option value="negotiation">Negotiation (request / counter / confirm / reject)</option>
+        <option value="booking">Booking (book / accept / reject / cancel)</option>
+        <option value="query">Availability queries</option>
+        <option value="UNAVAILABLE_BROADCAST">Broadcasts</option>
+      </select>
+      <ol id="messages" class="feed mono"></ol>
+    </aside>
+  </div>
+
+  <div id="tooltip" class="tooltip hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
